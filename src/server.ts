@@ -5,7 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-// import mongoSanitize from 'express-mongo-sanitize'; // <--- COMMENTED OUT TO FIX CRASH
+// import mongoSanitize from 'express-mongo-sanitize'; // CRASH HUA HAi
 import connectDB from './config/db';
 
 import authRoutes from './routes/auth';
@@ -42,6 +42,12 @@ app.use(cors());
 app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/tasks', taskRoutes);
+
+
+
+app.get('/health-check', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date() });
+});
 
 // Base Route
 app.get('/', (req, res) => {
