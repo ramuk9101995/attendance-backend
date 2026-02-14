@@ -5,7 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import mongoSanitize from 'express-mongo-sanitize';
+// import mongoSanitize from 'express-mongo-sanitize'; // <--- COMMENTED OUT TO FIX CRASH
 import connectDB from './config/db';
 
 import authRoutes from './routes/auth';
@@ -30,11 +30,13 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
+// app.use(mongoSanitize()); // <--- COMMENTED OUT TO FIX CRASH WITH EXPRESS 5
 
 // --- Standard Middleware ---
 app.use(express.json()); // Body parser
-app.use(cors()); // Enable CORS
+
+// Allow CORS (Update this with your frontend URL later if needed)
+app.use(cors()); 
 
 // --- Routes ---
 app.use('/api/auth', authRoutes);
