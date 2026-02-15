@@ -1,26 +1,78 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { verifyToken, TokenPayload } from '../utils/jwt';
 
-// Extend the Express Request interface locally
-export interface AuthRequest extends Request {
-  user?: any;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: TokenPayload;
+    }
+  }
 }
 
-const auth = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.header('x-auth-token');
-
-  if (!token) {
-    return res.status(401).json({ msg: 'No token, authorization denied' });
-  }
-
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string);
-    // Attach user to request object
-    (req as AuthRequest).user = (decoded as any).user;
-    next();
-  } catch (err) {
-    res.status(401).json({ msg: 'Token is not valid' });
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('[AUTH] Missing or invalid authorization header');
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please provide a valid token.',
+      });
+      return;
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    try {
+      const decoded = verifyToken(token);
+      req.user = decoded;
+      console.log(`[AUTH] User ${decoded.userId} authenticated successfully`);
+      next();
+    } catch (error) {
+      console.log('[AUTH] Token verification failed:', (error as Error).message);
+      res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token. Please login again.',
+      });
+      return;
+    }
+  } catch (error) {
+    console.error('[AUTH] Authentication error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Authentication error',
+    });
+    return;
   }
 };
 
-export default auth;
+export const optionalAuth = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded = verifyToken(token);
+        req.user = decoded;
+        console.log(`[OPTIONAL AUTH] User ${decoded.userId} authenticated`);
+      } catch (error) {
+        // Token is invalid but we don't reject the request
+        console.log('[OPTIONAL AUTH] Invalid token, continuing without auth');
+      }
+    }
+    
+    next();
+  } catch (error) {
+    next();
+  }
+};

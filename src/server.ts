@@ -1,59 +1,87 @@
+import express, { Application, Request, Response } from 'express';
 import dotenv from 'dotenv';
-dotenv.config();
-
-import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-// import mongoSanitize from 'express-mongo-sanitize'; // CRASH HUA HAi
-import connectDB from './config/db';
+import { connectDB } from './config/database';
 
-import authRoutes from './routes/auth';
-import attendanceRoutes from './routes/attendance';
-import taskRoutes from './routes/tasks';
+// Load environment variables
+dotenv.config();
 
-const app = express();
+// Import routes
+import authRoutes from './routes/authRoutes';
+import attendanceRoutes from './routes/attendanceRoutes';
+import taskRoutes from './routes/taskRoutes';
 
-// Connect Database
+// Import middleware
+import { errorHandler, notFound } from './middleware/errorHandler';
+
+const app: Application = express();
+const PORT = process.env.PORT || 5000;
+
+// Connect to MongoDB
 connectDB();
 
-// --- Security Middleware ---
-// Set security HTTP headers
-app.use(helmet());
+// Security Middlewares
+app.use(helmet()); 
 
-// Limit requests from same API (Brute force protection)
+// CORS Configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Rate Limiting
 const limiter = rateLimit({
-  max: 100, // Limit each IP to 100 requests per windowMs
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  message: 'Too many requests from this IP, please try again in 15 minutes!'
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), 
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-app.use('/api', limiter);
 
-// Data sanitization against NoSQL query injection
-// app.use(mongoSanitize()); // <--- COMMENTED OUT TO FIX CRASH WITH EXPRESS 5
+app.use('/api/', limiter);
 
-// --- Standard Middleware ---
-app.use(express.json()); // Body parser
+// Body Parser
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Allow CORS (Update this with your frontend URL later if needed)
-app.use(cors()); 
+// Health Check Route - _req used to satisfy TypeScript
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: 'Server is running',
+    database: 'MongoDB Connected',
+    timestamp: new Date().toISOString(),
+  });
+});
 
-// --- Routes ---
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/tasks', taskRoutes);
 
+// 404 Handler
+app.use(notFound);
 
+// Error Handler (MUST be the last piece of middleware)
+app.use(errorHandler);
 
-app.get('/health-check', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date() });
+// Start Server
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔒 CORS enabled for: ${allowedOrigins.join(', ')}`);
 });
 
-// Base Route
-app.get('/', (req, res) => {
-  res.send('API is running...');
-});
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+export default app;
